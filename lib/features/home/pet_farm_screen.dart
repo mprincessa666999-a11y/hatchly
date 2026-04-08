@@ -1,12 +1,64 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import 'package:couple_app/core/theme/app_colors.dart';
 import 'package:couple_app/core/theme/app_text_styles.dart';
 import 'package:couple_app/core/ui/app_icons.dart';
 import 'package:couple_app/features/home/pet_system.dart';
 import 'package:model_viewer_plus/model_viewer_plus.dart';
 
+// ── URL базы GitHub Releases ──────────────────────────────────────────
+const _baseUrl =
+    'https://github.com/mprincessa666999-a11y/hatchly/releases/download/v1.0-models';
+
+// Первый питомец — локальный (офлайн)
+const _localPetId = 'chunya';
+
+// ── Провайдер кэша путей к моделям ───────────────────────────────────
+final modelPathProvider =
+    StateNotifierProvider<ModelCacheNotifier, Map<String, String>>(
+      (ref) => ModelCacheNotifier(),
+    );
+
+class ModelCacheNotifier extends StateNotifier<Map<String, String>> {
+  ModelCacheNotifier() : super({});
+
+  void setPath(String key, String path) {
+    state = {...state, key: path};
+  }
+
+  bool has(String key) => state.containsKey(key);
+  String? get(String key) => state[key];
+}
+
+// ── Сервис загрузки модели ────────────────────────────────────────────
+Future<String?> downloadModel(String petId, int stage) async {
+  try {
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File('${dir.path}/models/${petId}_stage_$stage.glb');
+
+    // Уже скачан
+    if (await file.exists()) return file.path;
+
+    await file.parent.create(recursive: true);
+
+    final url = '$_baseUrl/${petId}_stage_$stage.glb';
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode == 200) {
+      await file.writeAsBytes(response.bodyBytes);
+      return file.path;
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// ── Главный экран фермы ───────────────────────────────────────────────
 class PetFarmScreen extends ConsumerWidget {
   const PetFarmScreen({super.key});
 
@@ -96,7 +148,8 @@ class PetFarmScreen extends ConsumerWidget {
   }
 }
 
-class _PetFarmCard extends StatelessWidget {
+// ── Карточка питомца ──────────────────────────────────────────────────
+class _PetFarmCard extends ConsumerStatefulWidget {
   final PetInfo pet;
   final int stage;
   final int progress;
@@ -114,6 +167,43 @@ class _PetFarmCard extends StatelessWidget {
   });
 
   @override
+  ConsumerState<_PetFarmCard> createState() => _PetFarmCardState();
+}
+
+class _PetFarmCardState extends ConsumerState<_PetFarmCard> {
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.isLocked && widget.pet.id != _localPetId) {
+      _ensureModel();
+    }
+  }
+
+  Future<void> _ensureModel() async {
+    final key = '${widget.pet.id}_${widget.stage}';
+    if (ref.read(modelPathProvider).containsKey(key)) return;
+
+    setState(() => _loading = true);
+    final path = await downloadModel(widget.pet.id, widget.stage);
+    if (path != null && mounted) {
+      ref.read(modelPathProvider.notifier).setPath(key, path);
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  String _modelSrc() {
+    if (widget.pet.id == _localPetId) {
+      return 'assets/models/${widget.pet.id}/stage_${widget.stage}.glb';
+    }
+    final key = '${widget.pet.id}_${widget.stage}';
+    final cached = ref.watch(modelPathProvider)[key];
+    if (cached != null) return cached;
+    return '';
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
@@ -122,28 +212,33 @@ class _PetFarmCard extends StatelessWidget {
           center: const Alignment(0, -0.3),
           radius: 0.9,
           colors: [
-            isLocked
+            widget.isLocked
                 ? const Color(0xFF1A1A1A)
-                : pet.glowColor.withValues(alpha: isCompleted ? 0.3 : 0.2),
+                : widget.pet.glowColor.withValues(
+                    alpha: widget.isCompleted ? 0.3 : 0.2,
+                  ),
             const Color(0xFF0E0E0E),
           ],
         ),
-        border: isCurrent
-            ? Border.all(color: pet.glowColor, width: 1.5)
-            : isCompleted
-            ? Border.all(color: pet.glowColor.withValues(alpha: 0.4), width: 1)
+        border: widget.isCurrent
+            ? Border.all(color: widget.pet.glowColor, width: 1.5)
+            : widget.isCompleted
+            ? Border.all(
+                color: widget.pet.glowColor.withValues(alpha: 0.4),
+                width: 1,
+              )
             : null,
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          if (isLocked)
+          if (widget.isLocked)
             Column(
               children: [
                 Icon(Icons.lock_outline, color: AppColors.textHint, size: 48),
                 const SizedBox(height: 8),
                 Text(
-                  pet.name,
+                  widget.pet.name,
                   style: AppTextStyles.bodyM.copyWith(
                     color: AppColors.textHint,
                     fontWeight: FontWeight.w700,
@@ -165,32 +260,64 @@ class _PetFarmCard extends StatelessWidget {
                 SizedBox(
                   height: 110,
                   width: 110,
-                  child: ModelViewer(
-                    key: ValueKey('${pet.id}_$stage'),
-                    src: 'assets/models/${pet.id}/stage_$stage.glb',
-                    alt: pet.name,
-                    autoRotate: true,
-                    autoPlay: true,
-                    backgroundColor: Colors.transparent,
-                    cameraControls: false,
-                    loading: Loading.lazy,
-                    relatedCss:
-                        'body { background-color: transparent !important; }',
-                  ),
+                  child: _loading
+                      ? Center(
+                          child: CircularProgressIndicator(
+                            color: widget.pet.glowColor,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : _modelSrc().isEmpty
+                      ? Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.cloud_download_outlined,
+                              color: widget.pet.glowColor.withValues(
+                                alpha: 0.5,
+                              ),
+                              size: 32,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Нет сети',
+                              style: AppTextStyles.caption.copyWith(
+                                color: AppColors.textHint,
+                              ),
+                            ),
+                          ],
+                        )
+                      : ModelViewer(
+                          key: ValueKey('${widget.pet.id}_${widget.stage}'),
+                          src: _modelSrc(),
+                          alt: widget.pet.name,
+                          autoRotate: true,
+                          autoPlay: true,
+                          backgroundColor: Colors.transparent,
+                          cameraControls: false,
+                          loading: Loading.lazy,
+                          relatedCss:
+                              'body { background-color: transparent !important; }',
+                        ),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  pet.name,
+                  widget.pet.name,
                   style: AppTextStyles.bodyM.copyWith(
                     fontWeight: FontWeight.w700,
-                    color: isCurrent ? pet.glowColor : AppColors.textPrimary,
+                    color: widget.isCurrent
+                        ? widget.pet.glowColor
+                        : AppColors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 4),
-                if (isCompleted)
-                  _Badge(label: 'Легендарный', color: pet.glowColor)
-                else if (isCurrent)
-                  _Badge(label: '$progress%', color: pet.glowColor),
+                if (widget.isCompleted)
+                  _Badge(label: 'Легендарный', color: widget.pet.glowColor)
+                else if (widget.isCurrent)
+                  _Badge(
+                    label: '${widget.progress}%',
+                    color: widget.pet.glowColor,
+                  ),
               ],
             ),
         ],

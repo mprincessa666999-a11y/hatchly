@@ -15,7 +15,7 @@
     <application
         android:label="Hatchly"
         android:name="${applicationName}"
-        android:icon="@mipmap/launcher_icon"
+        android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true"
         android:hardwareAccelerated="true" 
         android:usesCleartextTraffic="true">
