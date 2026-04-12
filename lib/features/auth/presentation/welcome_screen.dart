@@ -15,12 +15,14 @@ class WelcomeScreen extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Логотип (замените на ваш, если есть картинка)
+              const Spacer(),
+
+              // Логотип
               Container(
                 width: 100,
                 height: 100,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF16001).withOpacity(0.15),
+                  color: const Color(0xFFF16001).withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
@@ -40,14 +42,16 @@ class WelcomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                'Ведите задачи вместе, растите питомца и выполняйте желания.',
+                'Ведите задачи вместе, растите питомца\nи выполняйте желания.',
                 textAlign: TextAlign.center,
                 style: AppTextStyles.bodyM.copyWith(color: Colors.white54),
               ),
+
               const Spacer(),
-              // Кнопка "Продолжить"
+
+              // Кнопка регистрации / входа
               GestureDetector(
-                onTap: () => context.go('/profile'),
+                onTap: () => context.go('/login'),
                 child: Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 18),
@@ -59,7 +63,7 @@ class WelcomeScreen extends StatelessWidget {
                   ),
                   child: const Center(
                     child: Text(
-                      'Продолжить',
+                      'Войти / Зарегистрироваться',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
@@ -69,6 +73,7 @@ class WelcomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
+
               const SizedBox(height: 40),
             ],
           ),

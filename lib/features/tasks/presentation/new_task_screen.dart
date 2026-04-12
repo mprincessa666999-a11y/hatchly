@@ -223,7 +223,7 @@ class _NewTaskScreenState extends ConsumerState<NewTaskScreen> {
                 children: [
                   GestureDetector(
                     onTap: () => context.pop(),
-                    child: AppIcons.arrow(size: 20),
+                    child: AppIcons.arrow(size: 22),
                   ),
                   const Spacer(),
                   Text(
@@ -721,7 +721,7 @@ class _CategorySheetState extends State<_CategorySheet> {
           children: [
             GestureDetector(
               onTap: () => setState(() => _creating = false),
-              child: AppIcons.arrow(size: 20),
+              child: AppIcons.arrow(size: 22),
             ),
             const SizedBox(width: 12),
             Text('Новая категория', style: AppTextStyles.h3),

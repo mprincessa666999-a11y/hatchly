@@ -241,7 +241,7 @@ class _CollectionTile extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          AppIcons.arrow(size: 16, color: Colors.white24),
+          AppIcons.arrow(size: 22, color: Colors.white24),
         ],
       ),
     );

@@ -186,7 +186,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-              Text('Новая группа', style: AppTextStyles.h3),
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: () => Navigator.pop(ctx),
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white54,
+                      size: 22,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text('Новая группа', style: AppTextStyles.h3),
+                  const Spacer(),
+                  const SizedBox(width: 22),
+                ],
+              ),
               const SizedBox(height: 20),
               TextField(
                 controller: controller,

@@ -32,7 +32,7 @@ class CategoryTasksScreen extends ConsumerWidget {
                 children: [
                   GestureDetector(
                     onTap: () => context.pop(),
-                    child: AppIcons.arrow(size: 20),
+                    child: AppIcons.arrow(size: 22),
                   ),
                   const Spacer(),
                   AppIcons.category(category.id, size: 26),

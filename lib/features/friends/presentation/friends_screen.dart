@@ -296,7 +296,7 @@ class _FriendsScreenState extends ConsumerState<FriendsScreen> {
                     GestureDetector(
                       onTap: () => context.pop(), // или context.go('/profile')
                       // ИСПРАВЛЕНО: Заменено на AppIcons.arrow()
-                      child: AppIcons.arrow(),
+                      child: AppIcons.arrow(size: 22),
                     ),
                     const SizedBox(width: 16),
                     Text('Друзья', style: AppTextStyles.h2),
@@ -675,7 +675,7 @@ class _InfoRow extends StatelessWidget {
             color: iconColor.withValues(alpha: 0.12),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, size: 16, color: iconColor),
+          child: Icon(icon, size: 22, color: iconColor),
         ),
         const SizedBox(width: 12),
         Expanded(

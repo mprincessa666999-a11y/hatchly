@@ -53,7 +53,7 @@ class FamilyScreen extends ConsumerWidget {
                 child: Row(
                   children: [
                     GestureDetector(
-                      onTap: () => context.go('/'),
+                      onTap: () => context.pop(),
                       child: AppIcons.arrow(size: 22),
                     ),
                     const SizedBox(width: 16),
@@ -161,7 +161,7 @@ class FamilyScreen extends ConsumerWidget {
                             ),
                             child: const Icon(
                               Icons.task_alt,
-                              size: 16,
+                              size: 22,
                               color: AppColors.primary,
                             ),
                           ),
@@ -593,11 +593,7 @@ class FamilyScreen extends ConsumerWidget {
                               ],
                             ),
                           ),
-                          const Icon(
-                            Icons.chevron_right,
-                            color: Colors.white12,
-                            size: 18,
-                          ),
+                          AppIcons.arrow(size: 22, color: Colors.white12),
                         ],
                       ),
                     );
