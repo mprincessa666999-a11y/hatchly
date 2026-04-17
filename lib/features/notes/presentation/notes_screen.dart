@@ -1,3 +1,7 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -129,21 +133,68 @@ class NoteItem {
 
 // ── ПРОВАЙДЕР ─────────────────────────────────────────────────────────
 class NotesNotifier extends StateNotifier<List<NoteItem>> {
+  final _db = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
   NotesNotifier() : super([]);
+  String? get _uid => _auth.currentUser?.uid;
 
   void initStorage() {
     final saved = StorageService().loadNotes();
     if (saved.isNotEmpty) {
       state = saved.map((m) => NoteItem.fromMap(m)).toList();
     }
+    _loadFromFirestore();
   }
 
-  Future<void> _save() async =>
+  Future<void> _loadFromFirestore() async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      final snap = await _db
+          .collection('users')
+          .doc(uid)
+          .collection('notes')
+          .get();
+      if (snap.docs.isNotEmpty) {
+        state = snap.docs.map((d) => NoteItem.fromMap(d.data())).toList();
+        _saveLocal();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _saveLocal() async =>
       StorageService().saveNotes(state.map((n) => n.toMap()).toList());
+
+  Future<void> _saveFirestore(NoteItem note) async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      await _db
+          .collection('users')
+          .doc(uid)
+          .collection('notes')
+          .doc(note.id)
+          .set(note.toMap());
+    } catch (_) {}
+  }
+
+  Future<void> _deleteFirestore(String id) async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      await _db
+          .collection('users')
+          .doc(uid)
+          .collection('notes')
+          .doc(id)
+          .delete();
+    } catch (_) {}
+  }
 
   void addNote(NoteItem note) {
     state = [note, ...state];
-    _save();
+    _saveLocal();
+    _saveFirestore(note);
   }
 
   void updateNote(NoteItem note) {
@@ -151,12 +202,14 @@ class NotesNotifier extends StateNotifier<List<NoteItem>> {
       for (final n in state)
         if (n.id == note.id) note else n,
     ];
-    _save();
+    _saveLocal();
+    _saveFirestore(note);
   }
 
   void deleteNote(String id) {
     state = state.where((n) => n.id != id).toList();
-    _save();
+    _saveLocal();
+    _deleteFirestore(id);
   }
 }
 

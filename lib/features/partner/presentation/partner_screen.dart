@@ -8,6 +8,10 @@ import 'package:couple_app/core/theme/app_colors.dart';
 import 'package:couple_app/core/theme/app_text_styles.dart';
 import 'package:couple_app/core/ui/app_icons.dart';
 import 'package:couple_app/core/ui/widgets/app_plate.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:couple_app/core/services/storage_service.dart';
 import 'package:couple_app/features/partner/presentation/wish_detail_screen.dart';
 import 'package:couple_app/features/auth/providers/profile_provider.dart';
@@ -137,6 +141,21 @@ final collectionsProvider = Provider<List<Collection>>(
   ],
 );
 
+String _addButtonLabel(String id) {
+  switch (id) {
+    case 'travel':
+      return 'Добавить место';
+    case 'kino':
+      return 'Добавить фильм/сериал';
+    case 'entertainment':
+      return 'Добавить игру';
+    case 'cafe':
+      return 'Добавить место';
+    default:
+      return 'Добавить желание';
+  }
+}
+
 // ── Главный экран — без стрелки назад ────────────────────────────────
 class PartnerScreen extends ConsumerStatefulWidget {
   const PartnerScreen({super.key});
@@ -241,7 +260,7 @@ class _CollectionTile extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          AppIcons.arrow(size: 22, color: Colors.white24),
+          AppIcons.arrow(size: 16, color: Colors.white24),
         ],
       ),
     );
@@ -295,7 +314,7 @@ class WishlistScreen extends ConsumerWidget {
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    'Добавить желание',
+                    _addButtonLabel(collection.id),
                     style: AppTextStyles.bodyL.copyWith(
                       fontWeight: FontWeight.bold,
                       color: Colors.white,

@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,7 +14,6 @@ final petTaskCounterProvider = StateProvider<int>(
 );
 final petReactionProvider = StateProvider<String?>((ref) => null);
 
-// Провайдер для Стрика
 final streakProvider = StateProvider<int>((ref) {
   return StorageService().loadStreak();
 });
@@ -20,9 +21,12 @@ final streakProvider = StateProvider<int>((ref) {
 class TasksNotifier extends StateNotifier<List<Task>> {
   final VoidCallback onTaskDone;
   final VoidCallback onTaskUndone;
-  final Ref ref; // Нужен для доступа к streakProvider
+  final Ref ref;
 
-  List<Task> _prevState = []; // Для функции "Отмены"
+  final _db = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
+
+  List<Task> _prevState = [];
 
   TasksNotifier({
     required this.onTaskDone,
@@ -30,13 +34,81 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     required this.ref,
   }) : super([]);
 
+  String? get _uid => _auth.currentUser?.uid;
+
+  // ── Загрузка: сначала локально, потом Firestore ───────────────────
   Future<void> initStorage() async {
+    // Сначала загружаем из локального хранилища для быстрого старта
     final saved = StorageService().loadTasks();
     if (saved.isNotEmpty) state = saved;
+
+    // Затем подгружаем из Firestore
+    await _loadFromFirestore();
+
+    // Подписываемся на изменения в реальном времени
+    _listenFirestore();
+  }
+
+  Future<void> _loadFromFirestore() async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      final snap = await _db
+          .collection('users')
+          .doc(uid)
+          .collection('tasks')
+          .get();
+      if (snap.docs.isNotEmpty) {
+        final tasks = snap.docs.map((d) => Task.fromMap(d.data())).toList();
+        state = tasks;
+        StorageService().saveTasks(state);
+      }
+    } catch (_) {}
+  }
+
+  void _listenFirestore() {
+    final uid = _uid;
+    if (uid == null) return;
+    _db.collection('users').doc(uid).collection('tasks').snapshots().listen((
+      snap,
+    ) {
+      if (snap.docs.isNotEmpty) {
+        final tasks = snap.docs.map((d) => Task.fromMap(d.data())).toList();
+        state = tasks;
+        StorageService().saveTasks(state);
+      }
+    });
+  }
+
+  Future<void> _saveToFirestore(Task task) async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      await _db
+          .collection('users')
+          .doc(uid)
+          .collection('tasks')
+          .doc(task.id)
+          .set(task.toMap());
+    } catch (_) {}
+  }
+
+  Future<void> _deleteFromFirestore(String id) async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      await _db
+          .collection('users')
+          .doc(uid)
+          .collection('tasks')
+          .doc(id)
+          .delete();
+    } catch (_) {}
   }
 
   Future<void> _saveToStorage() async => StorageService().saveTasks(state);
 
+  // ── CRUD ──────────────────────────────────────────────────────────
   Future<void> addTask({
     required String title,
     required TaskCategory category,
@@ -54,20 +126,18 @@ class TasksNotifier extends StateNotifier<List<Task>> {
       time: time,
       reminderMinutes: reminderMinutes,
       assignedTo: assignedTo,
-      createdBy: 'user1',
-      sortOrder: state.length, // Новая задача в конец
+      createdBy: _uid ?? 'user1',
+      sortOrder: state.length,
       recurrenceType: recurrenceType,
     );
     state = [...state, task];
     await NotificationService().scheduleTaskNotification(task);
     await _saveToStorage();
+    await _saveToFirestore(task);
   }
 
   void toggleDone(String id) {
-    _prevState = List.from(
-      state,
-    ); // Сохраняем состояние ДО изменения для "Отмены"
-
+    _prevState = List.from(state);
     final task = state.firstWhere((t) => t.id == id);
     final wasDone = task.isDone;
 
@@ -75,25 +145,25 @@ class TasksNotifier extends StateNotifier<List<Task>> {
       if (t.id != id) return t;
       return t.copyWith(
         isDone: !t.isDone,
-        completedDate: !t.isDone
-            ? DateTime.now()
-            : null, // Записываем время выполнения для стрика
+        completedDate: !t.isDone ? DateTime.now() : null,
       );
     }).toList();
 
+    final updated = state.firstWhere((t) => t.id == id);
+
     if (!wasDone) {
-      HapticFeedback.mediumImpact(); // ВИБРАЦИЯ при выполнении
+      HapticFeedback.mediumImpact();
       onTaskDone();
       NotificationService().cancelTaskNotification(id);
-      _updateStreak(); // Обновляем стрик
-      _handleRecurrence(task); // Создаем следующую задачу, если нужно
+      _updateStreak();
+      _handleRecurrence(task);
     } else {
       onTaskUndone();
     }
     _saveToStorage();
+    _saveToFirestore(updated);
   }
 
-  // === НОВАЯ ФУНКЦИЯ: ОТМЕНА ===
   void undoLastAction() {
     if (_prevState.isNotEmpty) {
       state = _prevState;
@@ -103,41 +173,38 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     }
   }
 
-  // === НОВАЯ ФУНКЦИЯ: ПЕРЕТАСКИВАНИЕ ===
   void reorderTasks(int oldIndex, int newIndex) {
     if (oldIndex < newIndex) newIndex -= 1;
     final tasks = List<Task>.from(state);
     final task = tasks.removeAt(oldIndex);
     tasks.insert(newIndex, task);
-
-    // Обновляем порядковые номера
     state = tasks.asMap().entries.map((e) {
       return e.value.copyWith(sortOrder: e.key);
     }).toList();
     _saveToStorage();
+    // Сохраняем обновлённый порядок в Firestore
+    for (final t in state) {
+      _saveToFirestore(t);
+    }
   }
 
-  // === ЛОГИКА СТРИКА ===
   void _updateStreak() {
     final storage = StorageService();
     final lastDateStr = storage.loadLastStreakDate();
     final today = DateTime.now();
-    final todayStr = "${today.year}-${today.month}-${today.day}";
-
+    final todayStr = '${today.year}-${today.month}-${today.day}';
     int currentStreak = storage.loadStreak();
 
-    if (lastDateStr == todayStr) {
-      return; // Уже выполнили сегодня, стрик не растим
-    }
+    if (lastDateStr == todayStr) return;
 
     final yesterday = today.subtract(const Duration(days: 1));
     final yesterdayStr =
-        "${yesterday.year}-${yesterday.month}-${yesterday.day}";
+        '${yesterday.year}-${yesterday.month}-${yesterday.day}';
 
     if (lastDateStr == yesterdayStr) {
-      currentStreak++; // Вчера делали, сегодня делаем -> +1
+      currentStreak++;
     } else {
-      currentStreak = 1; // Пропустили день -> сброс до 1
+      currentStreak = 1;
     }
 
     storage.saveStreak(currentStreak);
@@ -145,10 +212,8 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     ref.read(streakProvider.notifier).state = currentStreak;
   }
 
-  // === ЛОГИКА ПОВТОРЕНИЯ ===
   void _handleRecurrence(Task completedTask) {
     if (completedTask.recurrenceType == RecurrenceType.none) return;
-
     DateTime nextDate = completedTask.date ?? DateTime.now();
     switch (completedTask.recurrenceType) {
       case RecurrenceType.daily:
@@ -163,8 +228,6 @@ class TasksNotifier extends StateNotifier<List<Task>> {
       case RecurrenceType.none:
         return;
     }
-
-    // Создаем новую задачу в будущем
     addTask(
       title: completedTask.title,
       category: completedTask.category,
@@ -206,14 +269,16 @@ class TasksNotifier extends StateNotifier<List<Task>> {
     await NotificationService().cancelTaskNotification(id);
     await NotificationService().scheduleTaskNotification(updated);
     await _saveToStorage();
+    await _saveToFirestore(updated);
   }
 
   Future<void> deleteTask(String id) async {
-    _prevState = List.from(state); // Сохраняем для отмены
+    _prevState = List.from(state);
     await NotificationService().cancelTaskNotification(id);
     state = state.where((t) => t.id != id).toList();
-    HapticFeedback.heavyImpact(); // ВИБРАЦИЯ при удалении
+    HapticFeedback.heavyImpact();
     _saveToStorage();
+    _deleteFromFirestore(id);
   }
 }
 
@@ -221,7 +286,7 @@ final tasksNotifierProvider = StateNotifierProvider<TasksNotifier, List<Task>>((
   ref,
 ) {
   return TasksNotifier(
-    ref: ref, // Передаем ref
+    ref: ref,
     onTaskDone: () {
       ref.read(petTaskCounterProvider.notifier).state++;
       ref.read(petReactionProvider.notifier).state = 'happy';
@@ -233,12 +298,10 @@ final tasksNotifierProvider = StateNotifierProvider<TasksNotifier, List<Task>>((
   );
 });
 
-// Сортировка (выполненные в конец, с учетом ручной сортировки)
 List<Task> _sortTasks(List<Task> tasks) {
   final result = [...tasks];
   result.sort((a, b) {
-    if (a.isDone == b.isDone)
-      return a.sortOrder.compareTo(b.sortOrder); // Учитываем ручную сортировку
+    if (a.isDone == b.isDone) return a.sortOrder.compareTo(b.sortOrder);
     return a.isDone ? 1 : -1;
   });
   return result;
@@ -287,12 +350,13 @@ final partnerProgressProvider = Provider<PartnerProgress>((ref) {
   final profileName = ref.watch(profileNameProvider);
   final tasks = ref.watch(tasksNotifierProvider);
   final total = tasks.length;
-  if (total == 0)
+  if (total == 0) {
     return const PartnerProgress(
       myPercent: 0,
       partnerPercent: 0,
       partnerName: 'Партнёр',
     );
+  }
   final done = tasks.where((t) => t.isDone).length;
   final myPercent = ((done / total) * 100).round();
   return PartnerProgress(

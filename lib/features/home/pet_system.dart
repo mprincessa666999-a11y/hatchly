@@ -1,15 +1,15 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:couple_app/features/tasks/providers/task_provider.dart';
 import 'package:couple_app/core/services/storage_service.dart';
 
-// ── Описание питомцев ─────────────────────────────────────────────────
 class PetInfo {
   final String id;
   final String name;
   final String description;
   final Color glowColor;
-
   const PetInfo({
     required this.id,
     required this.name,
@@ -63,29 +63,21 @@ const allPets = [
   ),
 ];
 
-// ── 8 задач на стадию, 6 стадий = 48 задач на питомца ──────────────
 const int tasksPerStage = 8;
 const int stagesPerPet = 6;
 const int tasksPerPet = tasksPerStage * stagesPerPet;
 
-// ── Стадия по количеству выполненных задач для текущего питомца ───────
-int stageFromTasks(int tasksForCurrentPet) {
-  final stage = (tasksForCurrentPet ~/ tasksPerStage) + 1;
-  return stage.clamp(1, stagesPerPet);
-}
+int stageFromTasks(int tasksForCurrentPet) =>
+    ((tasksForCurrentPet ~/ tasksPerStage) + 1).clamp(1, stagesPerPet);
 
-// ── Прогресс внутри текущей стадии (0-100%) ───────────────────────────
 int progressInStage(int tasksForCurrentPet) {
   final tasksInCurrentStage = tasksForCurrentPet % tasksPerStage;
   return ((tasksInCurrentStage / tasksPerStage) * 100).round();
 }
 
-// ── Общий прогресс питомца (0-100%) ──────────────────────────────────
-int petOverallProgress(int tasksForCurrentPet) {
-  return ((tasksForCurrentPet / tasksPerPet) * 100).clamp(0, 100).round();
-}
+int petOverallProgress(int tasksForCurrentPet) =>
+    ((tasksForCurrentPet / tasksPerPet) * 100).clamp(0, 100).round();
 
-// ── Стадия по проценту (0-100) ───────────────────────────────────────
 int stageFromPercent(int percent) {
   if (percent < 15) return 1;
   if (percent < 30) return 2;
@@ -95,7 +87,6 @@ int stageFromPercent(int percent) {
   return 6;
 }
 
-// ── Текстовый статус ──────────────────────────────────────────────────
 String statusFromStageAndPet(int stage, String petName, int percent) {
   if (percent == 0) return 'Ждёт тебя...';
   switch (stage) {
@@ -116,7 +107,6 @@ String statusFromStageAndPet(int stage, String petName, int percent) {
   }
 }
 
-// ── Состояние системы питомцев ────────────────────────────────────────
 class PetSystemState {
   final int currentPetIndex;
   final List<CompletedPet> completedPets;
@@ -128,43 +118,36 @@ class PetSystemState {
     required this.totalTasksDone,
   });
 
-  // Задач выполнено для текущего питомца
-  int get tasksForCurrentPet {
-    return (totalTasksDone - completedPets.length * tasksPerPet).clamp(
-      0,
-      tasksPerPet,
-    );
-  }
+  int get tasksForCurrentPet =>
+      (totalTasksDone - completedPets.length * tasksPerPet).clamp(
+        0,
+        tasksPerPet,
+      );
 
-  // Прогресс текущего питомца 0-100%
   int get currentPetProgress => petOverallProgress(tasksForCurrentPet);
-
-  // Стадия текущего питомца
   int get currentStage => stageFromTasks(tasksForCurrentPet);
 
   PetSystemState copyWith({
     int? currentPetIndex,
     List<CompletedPet>? completedPets,
     int? totalTasksDone,
-  }) {
-    return PetSystemState(
-      currentPetIndex: currentPetIndex ?? this.currentPetIndex,
-      completedPets: completedPets ?? this.completedPets,
-      totalTasksDone: totalTasksDone ?? this.totalTasksDone,
-    );
-  }
+  }) => PetSystemState(
+    currentPetIndex: currentPetIndex ?? this.currentPetIndex,
+    completedPets: completedPets ?? this.completedPets,
+    totalTasksDone: totalTasksDone ?? this.totalTasksDone,
+  );
 }
 
 class CompletedPet {
   final int petIndex;
   final DateTime completedAt;
-
   const CompletedPet({required this.petIndex, required this.completedAt});
 }
 
-// ── Notifier ──────────────────────────────────────────────────────────
 class PetSystemNotifier extends StateNotifier<PetSystemState> {
   int _totalDone = 0;
+  final _db = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
 
   PetSystemNotifier()
     : super(
@@ -175,7 +158,8 @@ class PetSystemNotifier extends StateNotifier<PetSystemState> {
         ),
       );
 
-  /// Загружает petCounter из хранилища
+  String? get _uid => _auth.currentUser?.uid;
+
   void initStorage() {
     final storage = StorageService();
     final saved = storage.loadPetCounter();
@@ -183,18 +167,41 @@ class PetSystemNotifier extends StateNotifier<PetSystemState> {
       _totalDone = saved;
       _recalculate();
     }
+    _loadFromFirestore();
   }
 
-  /// Обновляет прогресс на основе счётчика (не зависит от списка задач)
+  Future<void> _loadFromFirestore() async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      final doc = await _db.collection('users').doc(uid).get();
+      final counter = doc.data()?['petCounter'] as int?;
+      if (counter != null && counter > _totalDone) {
+        _totalDone = counter;
+        _recalculate();
+        StorageService().savePetCounter(_totalDone);
+      }
+    } catch (_) {}
+  }
+
   void onCountChanged(int count) {
     _totalDone = count;
     _recalculate();
     _saveToStorage();
+    _saveToFirestore();
   }
 
-  Future<void> _saveToStorage() async {
-    final storage = StorageService();
-    await storage.savePetCounter(_totalDone);
+  Future<void> _saveToStorage() async =>
+      StorageService().savePetCounter(_totalDone);
+
+  Future<void> _saveToFirestore() async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      await _db.collection('users').doc(uid).set({
+        'petCounter': _totalDone,
+      }, SetOptions(merge: true));
+    } catch (_) {}
   }
 
   void _recalculate() {
@@ -202,9 +209,7 @@ class PetSystemNotifier extends StateNotifier<PetSystemState> {
       0,
       allPets.length - 1,
     );
-
     if (expectedPetIndex > state.currentPetIndex) {
-      // Питомец вырос! Добавляем в выращенные
       final newCompleted = List<CompletedPet>.from(state.completedPets);
       for (int i = state.currentPetIndex; i < expectedPetIndex; i++) {
         newCompleted.add(
@@ -225,15 +230,9 @@ class PetSystemNotifier extends StateNotifier<PetSystemState> {
 final petSystemProvider =
     StateNotifierProvider<PetSystemNotifier, PetSystemState>((ref) {
       final notifier = PetSystemNotifier();
-
-      // Загружаем сохранённый счётчик
       notifier.initStorage();
-
-      // Следим за отдельным счётчиком выполненных задач
-      // (не зависит от списка — автоудаление не влияет на прогресс)
       ref.listen(petTaskCounterProvider, (prev, count) {
         notifier.onCountChanged(count);
       });
-
       return notifier;
     });
