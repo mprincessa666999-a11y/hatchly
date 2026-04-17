@@ -1,59 +1,32 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:couple_app/core/services/storage_service.dart';
 import 'package:couple_app/features/tasks/data/task_model.dart';
 
-const _defaultCategories = [
-  TaskCategory(
-    id: 'cleaning',
-    name: 'Уборка',
-    iconAsset: 'cleaning.svg',
-    colorHex: '#64B5F6',
-  ),
-  TaskCategory(
-    id: 'cooking',
-    name: 'Готовка',
-    iconAsset: 'cooking.svg',
-    colorHex: '#34D399',
-  ),
-  TaskCategory(
-    id: 'events',
-    name: 'Мероприятия',
-    iconAsset: 'events.svg',
-    colorHex: '#FFCA28',
-  ),
-  TaskCategory(
-    id: 'pets',
-    name: 'Питомцы',
-    iconAsset: 'pets.svg',
-    colorHex: '#F16001',
-  ),
-  TaskCategory(
-    id: 'health',
-    name: 'Здоровье',
-    iconAsset: 'health.svg',
-    colorHex: '#FF6B6B',
-  ),
-];
-
 class CategoriesNotifier extends StateNotifier<List<TaskCategory>> {
+  final _db = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
+
   CategoriesNotifier() : super([]);
+
+  String? get _uid => _auth.currentUser?.uid;
 
   void initStorage() {
     final saved = StorageService().loadCategories();
 
     if (saved.isEmpty) {
-      // Первый запуск — пустой список, пользователь создаёт сам
       state = [];
+      // Попробуем загрузить из Firestore
+      _loadFromFirestore();
       return;
     }
 
-    // Мигрируем: если у категории нет иконки — ставим дефолтную
+    // Мигрируем категории без иконок
     final migrated = saved.map((c) {
       final hasIcon = c.iconAsset != null && c.iconAsset!.isNotEmpty;
       final hasColor = c.colorHex != null && c.colorHex!.isNotEmpty;
       if (!hasIcon || !hasColor) {
-        final def = _defaultCategories.where((d) => d.id == c.id).firstOrNull;
-        if (def != null) return def;
         return TaskCategory(
           id: c.id,
           name: c.name,
@@ -65,10 +38,43 @@ class CategoriesNotifier extends StateNotifier<List<TaskCategory>> {
     }).toList();
 
     state = migrated;
-    _save();
+    _saveLocal();
+    // Синхронизируем с Firestore
+    _syncToFirestore(migrated);
   }
 
-  Future<void> _save() async => StorageService().saveCategories(state);
+  Future<void> _loadFromFirestore() async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      final doc = await _db.collection('users').doc(uid).get();
+      final cats = doc.data()?['categories'];
+      if (cats != null) {
+        final list = (cats as List)
+            .map((m) => TaskCategory.fromMap(Map<String, dynamic>.from(m)))
+            .toList();
+        state = list;
+        _saveLocal();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _syncToFirestore(List<TaskCategory> cats) async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      await _db.collection('users').doc(uid).set({
+        'categories': cats.map((c) => c.toMap()).toList(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+  }
+
+  Future<void> _saveLocal() async => StorageService().saveCategories(state);
+
+  Future<void> _save() async {
+    _saveLocal();
+    _syncToFirestore(state);
+  }
 
   void addCategory(TaskCategory category) {
     state = [...state, category];

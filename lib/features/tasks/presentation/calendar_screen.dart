@@ -7,7 +7,29 @@ import 'package:couple_app/core/ui/widgets/app_plate.dart';
 import 'package:couple_app/features/tasks/data/task_model.dart';
 import 'package:couple_app/features/tasks/providers/task_provider.dart';
 import 'package:couple_app/core/ui/app_icons.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:couple_app/core/ui/pet_assets.dart';
+
+Widget _buildCatIcon(TaskCategory cat, {double size = 26}) {
+  final asset = cat.iconAsset;
+  final hex = cat.colorHex;
+  if (asset != null && asset.isNotEmpty && hex != null && hex.isNotEmpty) {
+    try {
+      return ColorFiltered(
+        colorFilter: ColorFilter.mode(
+          Color(int.parse(hex.replaceFirst('#', '0xFF'))),
+          BlendMode.srcIn,
+        ),
+        child: SvgPicture.asset(
+          'assets/icons/categories/$asset',
+          width: size,
+          height: size,
+        ),
+      );
+    } catch (_) {}
+  }
+  return AppIcons.category(cat.id, size: size);
+}
 
 class CalendarScreen extends ConsumerStatefulWidget {
   const CalendarScreen({super.key});

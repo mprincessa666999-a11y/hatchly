@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:couple_app/core/theme/app_colors.dart';
 import 'package:couple_app/core/theme/app_text_styles.dart';
@@ -8,6 +9,27 @@ import 'package:couple_app/core/ui/pet_assets.dart';
 import 'package:couple_app/features/tasks/data/task_model.dart';
 import 'package:couple_app/features/tasks/providers/task_provider.dart';
 import 'package:couple_app/features/tasks/presentation/widgets/task_card.dart';
+
+Widget _buildCatIcon(TaskCategory cat, {double size = 26}) {
+  final asset = cat.iconAsset;
+  final hex = cat.colorHex;
+  if (asset != null && asset.isNotEmpty && hex != null && hex.isNotEmpty) {
+    try {
+      return ColorFiltered(
+        colorFilter: ColorFilter.mode(
+          Color(int.parse(hex.replaceFirst('#', '0xFF'))),
+          BlendMode.srcIn,
+        ),
+        child: SvgPicture.asset(
+          'assets/icons/categories/$asset',
+          width: size,
+          height: size,
+        ),
+      );
+    } catch (_) {}
+  }
+  return AppIcons.category(cat.id, size: size);
+}
 
 class CategoryTasksScreen extends ConsumerWidget {
   final TaskCategory category;
@@ -35,7 +57,7 @@ class CategoryTasksScreen extends ConsumerWidget {
                     child: AppIcons.arrow(size: 22),
                   ),
                   const Spacer(),
-                  AppIcons.category(category.id, size: 26),
+                  _buildCatIcon(category, size: 26),
                   const SizedBox(width: 10),
                   Text(category.name, style: AppTextStyles.h2),
                   const SizedBox(width: 8),
@@ -64,7 +86,6 @@ class CategoryTasksScreen extends ConsumerWidget {
 
             const SizedBox(height: 16),
 
-            // ── Контент ──
             Expanded(
               child: categoryTasks.isEmpty
                   ? _EmptyCategory(category: category)
@@ -92,7 +113,6 @@ class CategoryTasksScreen extends ConsumerWidget {
   }
 }
 
-// ── Пустой экран с питомцем ───────────────────────────────────────────
 class _EmptyCategory extends StatelessWidget {
   final TaskCategory category;
   const _EmptyCategory({required this.category});
@@ -151,7 +171,6 @@ class _EmptyCategory extends StatelessWidget {
   }
 }
 
-// ── Кнопка добавления ─────────────────────────────────────────────────
 class _AddTaskButton extends StatelessWidget {
   final VoidCallback onTap;
   const _AddTaskButton({required this.onTap});

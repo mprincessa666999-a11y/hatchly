@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:couple_app/core/theme/app_colors.dart';
 import 'package:couple_app/core/theme/app_text_styles.dart';
@@ -8,9 +9,30 @@ import 'package:couple_app/core/ui/app_icons.dart';
 import 'package:couple_app/core/ui/widgets/app_plate.dart';
 import 'package:couple_app/features/tasks/data/task_model.dart';
 import 'package:couple_app/features/tasks/providers/task_provider.dart';
-import 'package:couple_app/features/tasks/presentation/task_detail_screen.dart';
-import 'package:couple_app/features/home/widgets/hero_progress_card.dart'; // ← для celebrate
-import 'package:couple_app/features/home/pet_system.dart'; // ← для glowColor
+import 'package:couple_app/features/home/widgets/hero_progress_card.dart';
+import 'package:couple_app/features/home/pet_system.dart';
+
+// Иконка категории с цветом
+Widget _buildCatIcon(TaskCategory cat, {double size = 28}) {
+  final asset = cat.iconAsset;
+  final hex = cat.colorHex;
+  if (asset != null && asset.isNotEmpty && hex != null && hex.isNotEmpty) {
+    try {
+      return ColorFiltered(
+        colorFilter: ColorFilter.mode(
+          Color(int.parse(hex.replaceFirst('#', '0xFF'))),
+          BlendMode.srcIn,
+        ),
+        child: SvgPicture.asset(
+          'assets/icons/categories/$asset',
+          width: size,
+          height: size,
+        ),
+      );
+    } catch (_) {}
+  }
+  return AppIcons.category(cat.id, size: size);
+}
 
 class TaskCard extends ConsumerStatefulWidget {
   final Task task;
@@ -48,12 +70,8 @@ class _TaskCardState extends ConsumerState<TaskCard>
     HapticFeedback.mediumImpact();
     final wasNotDone = !widget.task.isDone;
     ref.read(tasksNotifierProvider.notifier).toggleDone(widget.task.id);
-
     if (wasNotDone) {
-      // Анимация чекбокса
       _scaleController.forward().then((_) => _scaleController.reverse());
-
-      // Анимация питомца на главном экране
       final petState = ref.read(petSystemProvider);
       final currentPet = allPets[petState.currentPetIndex];
       heroProgressCardKey.currentState?.celebrate(currentPet.glowColor);
@@ -74,16 +92,15 @@ class _TaskCardState extends ConsumerState<TaskCard>
         ),
         child: const Icon(Icons.delete_outline, color: Colors.redAccent),
       ),
-      onDismissed: (_) {
-        ref.read(tasksNotifierProvider.notifier).deleteTask(widget.task.id);
-      },
+      onDismissed: (_) =>
+          ref.read(tasksNotifierProvider.notifier).deleteTask(widget.task.id),
       child: GestureDetector(
         onTap: () => context.push('/tasks/${widget.task.id}'),
         child: AppPlate(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
             children: [
-              AppIcons.category(widget.task.category.id, size: 28),
+              _buildCatIcon(widget.task.category, size: 28),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -104,7 +121,7 @@ class _TaskCardState extends ConsumerState<TaskCard>
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.alarm_outlined,
                           size: 13,
                           color: AppColors.textSecondary,
@@ -119,8 +136,6 @@ class _TaskCardState extends ConsumerState<TaskCard>
                   ],
                 ),
               ),
-
-              // Чекбокс
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: _toggleDone,

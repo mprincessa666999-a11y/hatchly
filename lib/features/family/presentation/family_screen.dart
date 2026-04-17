@@ -5,6 +5,9 @@ import 'package:couple_app/core/theme/app_colors.dart';
 import 'package:couple_app/core/theme/app_text_styles.dart';
 import 'package:couple_app/core/ui/widgets/app_plate.dart';
 import 'package:couple_app/core/ui/pet_assets.dart';
+import 'package:couple_app/features/home/pet_system.dart'
+    show petSystemProvider, stageFromPercent, allPets;
+import 'package:model_viewer_plus/model_viewer_plus.dart';
 import 'package:couple_app/core/ui/app_icons.dart';
 import 'package:couple_app/features/tasks/providers/task_provider.dart';
 import 'package:couple_app/features/partner/presentation/partner_screen.dart'
@@ -87,9 +90,38 @@ class FamilyScreen extends ConsumerWidget {
                   ),
                   child: Column(
                     children: [
-                      PetAssets.sadPetWidget(petId: 'chunya', size: 90),
+                      Consumer(
+                        builder: (ctx, ref, _) {
+                          final petState = ref.watch(petSystemProvider);
+                          final pet = allPets[petState.currentPetIndex];
+                          final stage = stageFromPercent(
+                            petState.currentPetProgress,
+                          );
+                          return SizedBox(
+                            height: 90,
+                            width: 90,
+                            child: ModelViewer(
+                              src: 'assets/models/${pet.id}/stage_$stage.glb',
+                              alt: pet.name,
+                              autoRotate: true,
+                              autoPlay: true,
+                              backgroundColor: Colors.transparent,
+                              cameraControls: false,
+                              loading: Loading.lazy,
+                              relatedCss:
+                                  'body { background-color: transparent !important; }',
+                            ),
+                          );
+                        },
+                      ),
                       const SizedBox(height: 12),
-                      Text('Чуня', style: AppTextStyles.h3),
+                      Consumer(
+                        builder: (ctx, ref, _) {
+                          final petState = ref.watch(petSystemProvider);
+                          final pet = allPets[petState.currentPetIndex];
+                          return Text(pet.name, style: AppTextStyles.h3);
+                        },
+                      ),
                       const SizedBox(height: 4),
                       Text(
                         'Уровень $petLevel',
@@ -161,7 +193,7 @@ class FamilyScreen extends ConsumerWidget {
                             ),
                             child: const Icon(
                               Icons.task_alt,
-                              size: 22,
+                              size: 16,
                               color: AppColors.primary,
                             ),
                           ),
@@ -593,7 +625,7 @@ class FamilyScreen extends ConsumerWidget {
                               ],
                             ),
                           ),
-                          AppIcons.arrow(size: 22, color: Colors.white12),
+                          AppIcons.arrow(size: 16, color: Colors.white12),
                         ],
                       ),
                     );
