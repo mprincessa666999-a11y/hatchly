@@ -53,4 +53,10 @@ flutter:
     - assets/icons/
     - assets/icons/categories/
     - assets/models/chunya/
+    - assets/models/astra/
+    - assets/models/flik/
+    - assets/models/lumi/
+    - assets/models/nyx/
+    - assets/models/plyukh/
+    - assets/models/zippo/
     - assets/pets/
